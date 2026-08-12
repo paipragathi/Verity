@@ -3,6 +3,16 @@ import bcryptjs from 'bcryptjs';
 import { errorHandler } from '../utils/error.js';
 import jwt from 'jsonwebtoken';
 
+const TOKEN_EXPIRY = '7d';
+const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days, matches TOKEN_EXPIRY
+
+const authCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  maxAge: COOKIE_MAX_AGE,
+};
+
 export const signup = async (req, res, next) => {
   const { username, email, password } = req.body;
 
@@ -14,7 +24,7 @@ export const signup = async (req, res, next) => {
     email === '' ||
     password === ''
   ) {
-    next(errorHandler(400, 'All fields are required'));
+    return next(errorHandler(400, 'All fields are required'));
   }
 
   const hashedPassword = bcryptjs.hashSync(password, 10);
@@ -37,7 +47,7 @@ export const signin = async (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password || email === '' || password === '') {
-    next(errorHandler(400, 'All fields are required'));
+    return next(errorHandler(400, 'All fields are required'));
   }
 
   try {
@@ -51,16 +61,15 @@ export const signin = async (req, res, next) => {
     }
     const token = jwt.sign(
       { id: validUser._id, isAdmin: validUser.isAdmin },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: TOKEN_EXPIRY }
     );
 
     const { password: pass, ...rest } = validUser._doc;
 
     res
       .status(200)
-      .cookie('access_token', token, {
-        httpOnly: true,
-      })
+      .cookie('access_token', token, authCookieOptions)
       .json(rest);
   } catch (error) {
     next(error);
@@ -74,14 +83,13 @@ export const google = async (req, res, next) => {
     if (user) {
       const token = jwt.sign(
         { id: user._id, isAdmin: user.isAdmin },
-        process.env.JWT_SECRET
+        process.env.JWT_SECRET,
+        { expiresIn: TOKEN_EXPIRY }
       );
       const { password, ...rest } = user._doc;
       res
         .status(200)
-        .cookie('access_token', token, {
-          httpOnly: true,
-        })
+        .cookie('access_token', token, authCookieOptions)
         .json(rest);
     } else {
       const generatedPassword =
@@ -99,14 +107,13 @@ export const google = async (req, res, next) => {
       await newUser.save();
       const token = jwt.sign(
         { id: newUser._id, isAdmin: newUser.isAdmin },
-        process.env.JWT_SECRET
+        process.env.JWT_SECRET,
+        { expiresIn: TOKEN_EXPIRY }
       );
       const { password, ...rest } = newUser._doc;
       res
         .status(200)
-        .cookie('access_token', token, {
-          httpOnly: true,
-        })
+        .cookie('access_token', token, authCookieOptions)
         .json(rest);
     }
   } catch (error) {
