@@ -29,6 +29,10 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// email and username already indexed implicitly via `unique: true`.
+// Explicit index added for admin dashboard sort-by-createdAt (getUsers).
+userSchema.index({ createdAt: -1 });
+
 const User = mongoose.model('User', userSchema);
 
 export default User;

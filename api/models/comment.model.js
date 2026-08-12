@@ -26,6 +26,11 @@ const commentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// getPostComments() filters by postId + sorts by createdAt (comment.controller.js) —
+// compound index supports both in a single scan instead of a filter-then-sort.
+commentSchema.index({ postId: 1, createdAt: -1 });
+commentSchema.index({ createdAt: -1 }); // used by admin getcomments() sort + date-range counts
+
 const Comment = mongoose.model('Comment', commentSchema);
 
 export default Comment;

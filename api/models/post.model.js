@@ -33,6 +33,14 @@ const postSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// title and slug already indexed implicitly via `unique: true`.
+// These support the filter/sort patterns used in getposts() (post.controller.js):
+// filtering by userId/category, sorting by updatedAt, and date-range counts on createdAt.
+postSchema.index({ userId: 1 });
+postSchema.index({ category: 1 });
+postSchema.index({ updatedAt: -1 });
+postSchema.index({ createdAt: -1 });
+
 const Post = mongoose.model('Post', postSchema);
 
 export default Post;
