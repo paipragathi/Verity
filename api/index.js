@@ -52,7 +52,11 @@ app.use('/api/comment', commentRoutes);
 // ── Static frontend ──────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, '/client/dist')));
 
-app.get('*', (req, res) => {
+// Express 5 (path-to-regexp v8) requires a named wildcard instead of
+// the old bare '*' — this catches every non-API route and serves the
+// SPA's index.html so client-side routing (react-router) works on
+// direct page loads / refreshes.
+app.get('/*splat', (req, res) => {
   res.sendFile(path.join(__dirname, 'client', 'dist', 'index.html'));
 });
 
