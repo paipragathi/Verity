@@ -25,7 +25,20 @@ const __dirname = path.resolve();
 const app = express();
 
 // ── Security & parsing middleware ────────────────────────────────
-app.use(helmet());
+app.use(
+  helmet({
+    // Firebase's signInWithPopup() relies on the popup window being able
+    // to message back to the opener (window.opener). Helmet's default
+    // Cross-Origin-Opener-Policy is 'same-origin', which browsers use to
+    // isolate popups from their opener — this silently breaks Google
+    // sign-in: the popup opens, the user authenticates, but the result
+    // never reaches the app (no visible error, it just does nothing).
+    // 'same-origin-allow-popups' keeps the isolation benefit for
+    // everything else while allowing this specific opener/popup
+    // relationship. See: https://github.com/firebase/firebase-js-sdk/issues/6716
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  })
+);
 app.use(
   cors({
     origin: config.corsOrigin,
