@@ -7,10 +7,18 @@ import { signInSuccess } from '../redux/user/userSlice';
 import { useNavigate } from 'react-router-dom';
 
 export default function OAuth() {
-    const auth = getAuth(app)
     const dispatch = useDispatch()
     const navigate = useNavigate()
-    const handleGoogleClick = async () =>{
+
+    const handleGoogleClick = async () => {
+        // app is null if VITE_FIREBASE_API_KEY wasn't set at build time
+        // (see firebase.js) — fail with a clear message instead of an
+        // uncaught exception from getAuth(null).
+        if (!app) {
+            console.error('Google sign-in is unavailable: Firebase failed to initialize.');
+            return;
+        }
+        const auth = getAuth(app)
         const provider = new GoogleAuthProvider()
         provider.setCustomParameters({ prompt: 'select_account' })
         try {
@@ -32,11 +40,19 @@ export default function OAuth() {
         } catch (error) {
             console.log(error);
         }
-    } 
+    }
+
   return (
-    <Button type='button' gradientDuoTone='pinkToOrange' outline onClick={handleGoogleClick}>
+    <Button
+        type='button'
+        gradientDuoTone='pinkToOrange'
+        outline
+        disabled={!app}
+        title={!app ? 'Google sign-in is temporarily unavailable' : undefined}
+        onClick={handleGoogleClick}
+    >
         <AiFillGoogleCircle className='w-6 h-6 mr-2'/>
-        Continue with Google
+        {app ? 'Continue with Google' : 'Google sign-in unavailable'}
     </Button>
   )
 }

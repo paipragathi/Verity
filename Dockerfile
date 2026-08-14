@@ -4,6 +4,14 @@ WORKDIR /app/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
+
+# Vite inlines VITE_* env vars into the bundle at build time (not runtime) —
+# must be passed as a build ARG. Railway auto-forwards a service Variable
+# as a build ARG when the Dockerfile declares an ARG of the same name, so
+# set VITE_FIREBASE_API_KEY in Railway's Variables tab to make this work.
+ARG VITE_FIREBASE_API_KEY
+ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
+
 RUN npm run build
 
 # ── Stage 2: install server dependencies ────────────────────────
