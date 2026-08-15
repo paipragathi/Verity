@@ -41,6 +41,20 @@ postSchema.index({ category: 1 });
 postSchema.index({ updatedAt: -1 });
 postSchema.index({ createdAt: -1 });
 
+// Replaces the previous $regex-based search in getposts() (post.controller.js).
+// A $regex scan on title/content cannot use a standard B-tree index for
+// unanchored/case-insensitive matching — it was a full collection scan
+// on every search request. A text index lets MongoDB use an inverted
+// index instead.
+//
+// Trade-off (deliberate, documented): text search is word/stem-based,
+// not substring-based. Searching "cat" will match documents containing
+// "cats" or "catering" (via stemming) but will NOT match "category" the
+// way the old $regex substring search did. This is a real product
+// behavior change, not just a performance one — acceptable here since
+// blog search UX generally expects whole-word matching anyway.
+postSchema.index({ title: 'text', content: 'text' });
+
 const Post = mongoose.model('Post', postSchema);
 
 export default Post;
