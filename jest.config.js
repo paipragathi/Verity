@@ -3,6 +3,7 @@ export default {
   testEnvironment: 'node',
   transform: {},
   testMatch: ['**/tests/**/*.test.js'],
+  setupFiles: ['<rootDir>/tests/setup.js'],
   collectCoverageFrom: [
     'api/**/*.js',
     '!api/index.js', // entrypoint — exercised by integration/manual testing, not unit coverage
