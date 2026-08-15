@@ -1,5 +1,8 @@
 import Post from '../models/post.model.js';
 import { errorHandler } from '../utils/error.js';
+import { cacheGet, cacheSet, cacheInvalidatePrefix } from '../utils/cache.js';
+
+const POSTS_CACHE_PREFIX = 'posts:list:';
 
 export const create = async (req, res, next) => {
   if (!req.user.isAdmin) {
@@ -20,6 +23,7 @@ export const create = async (req, res, next) => {
   });
   try {
     const savedPost = await newPost.save();
+    await cacheInvalidatePrefix(POSTS_CACHE_PREFIX);
     res.status(201).json(savedPost);
   } catch (error) {
     next(error);
@@ -31,18 +35,45 @@ export const getposts = async (req, res, next) => {
     const startIndex = parseInt(req.query.startIndex) || 0;
     const limit = parseInt(req.query.limit) || 9;
     const sortDirection = req.query.order === 'asc' ? 1 : -1;
-    const posts = await Post.find({
+
+    // Cache key must encode every query param that affects the result —
+    // a stable, sorted serialization so equivalent requests (regardless
+    // of param order) hit the same cache entry.
+    const cacheKey =
+      POSTS_CACHE_PREFIX +
+      JSON.stringify({
+        startIndex,
+        limit,
+        sortDirection,
+        userId: req.query.userId || null,
+        category: req.query.category || null,
+        slug: req.query.slug || null,
+        postId: req.query.postId || null,
+        searchTerm: req.query.searchTerm || null,
+      });
+
+    const cached = await cacheGet(cacheKey);
+    if (cached) {
+      return res.status(200).json({ ...cached, _cache: 'HIT' });
+    }
+
+    const query = {
       ...(req.query.userId && { userId: req.query.userId }),
       ...(req.query.category && { category: req.query.category }),
       ...(req.query.slug && { slug: req.query.slug }),
       ...(req.query.postId && { _id: req.query.postId }),
+      // MongoDB text index (title + content, see post.model.js) instead of
+      // the previous unanchored $regex scan. Trade-off, documented: this
+      // is word/stem-based matching (via MongoDB's text search), not
+      // substring matching — searching "cat" will no longer match
+      // "category" the way $regex did, but it can now use an index
+      // instead of scanning every document on every search request.
       ...(req.query.searchTerm && {
-        $or: [
-          { title: { $regex: req.query.searchTerm, $options: 'i' } },
-          { content: { $regex: req.query.searchTerm, $options: 'i' } },
-        ],
+        $text: { $search: req.query.searchTerm },
       }),
-    })
+    };
+
+    const posts = await Post.find(query)
       .sort({ updatedAt: sortDirection })
       .skip(startIndex)
       .limit(limit);
@@ -61,11 +92,13 @@ export const getposts = async (req, res, next) => {
       createdAt: { $gte: oneMonthAgo },
     });
 
-    res.status(200).json({
-      posts,
-      totalPosts,
-      lastMonthPosts,
-    });
+    const responseBody = { posts, totalPosts, lastMonthPosts };
+
+    // Fire-and-forget — cacheSet never throws, and the response doesn't
+    // need to wait on the cache write completing.
+    cacheSet(cacheKey, responseBody);
+
+    res.status(200).json({ ...responseBody, _cache: 'MISS' });
   } catch (error) {
     next(error);
   }
@@ -77,6 +110,7 @@ export const deletepost = async (req, res, next) => {
   }
   try {
     await Post.findByIdAndDelete(req.params.postId);
+    await cacheInvalidatePrefix(POSTS_CACHE_PREFIX);
     res.status(200).json('The post has been deleted');
   } catch (error) {
     next(error);
@@ -100,6 +134,7 @@ export const updatepost = async (req, res, next) => {
       },
       { new: true }
     );
+    await cacheInvalidatePrefix(POSTS_CACHE_PREFIX);
     res.status(200).json(updatedPost);
   } catch (error) {
     next(error);
