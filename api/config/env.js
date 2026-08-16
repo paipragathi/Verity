@@ -23,4 +23,11 @@ export const config = {
   mongoUri: process.env.MONGO,
   jwtSecret: process.env.JWT_SECRET,
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // Deliberately NOT in the required[] list above — caching is an
+  // optimization, not a dependency. The app must run correctly with
+  // Redis absent or down (falls back to MongoDB on every read), so a
+  // missing REDIS_URL is a degraded-performance state, not a startup
+  // failure. See api/utils/cache.js.
+  redisUrl: process.env.REDIS_URL || null,
+  postsCacheTtlSeconds: parseInt(process.env.POSTS_CACHE_TTL_SECONDS, 10) || 60,
 };

@@ -248,6 +248,61 @@ dependencies (`npm audit --omit=dev`) report 0 vulnerabilities.
 
 ---
 
+## 8. Redis caching + MongoDB text search (post-deployment optimization pass)
+
+After the initial deployment, k6 load testing against the live Railway
+instance showed a p95 latency of 858ms against a 500ms target
+(see `loadtest/RESULTS.md`), attributed to unoptimized reads and an
+unindexed search path. This section addresses both.
+
+**Redis caching (`api/utils/cache.js`)** — cache-aside layer in front of
+`getposts()`. Every cache operation is designed to NEVER throw or block
+a request: a missing `REDIS_URL`, an unreachable Redis, or a mid-operation
+Redis error all resolve to a cache miss and fall through to MongoDB.
+Caching is explicitly a performance optimization here, not a new
+dependency the app can fail on. Cache keys encode every query parameter
+that affects the result (pagination, sort, filters, search term) so
+distinct queries never collide. Writes (`create`, `updatepost`,
+`deletepost`) invalidate the entire `posts:list:` cache prefix rather
+than trying to selectively patch cached entries, trading a slightly
+higher miss rate after writes for correctness simplicity.
+
+**MongoDB text index replacing `$regex` search** — the previous search
+used an unanchored, case-insensitive `$regex` across title and content,
+which cannot use a standard B-tree index and was a full collection scan
+on every search request (flagged as a known gap in section 2 above).
+Replaced with a MongoDB text index and `$text: { $search }` query.
+Documented trade-off: text search is word/stem-based, not substring-based
+— searching "cat" no longer matches "category" the way `$regex` did — a
+real product behavior change, judged acceptable for blog search UX.
+
+**Health check design decision** — `GET /api/health/ready` treats MongoDB
+as a hard dependency (503 if disconnected) and Redis as a soft one
+(reported in the response, never causes 503 on its own). This reflects
+actual behavior: the app is correct without Redis, just slower on reads.
+
+**Verified:**
+- 37/37 Jest tests passing (up from 30), including 7 new tests
+  specifically exercising cache.js's fail-gracefully behavior — both
+  "Redis not configured" and "Redis configured but unreachable" paths,
+  confirming neither ever throws
+- Coverage: 29.42% statements (up from 24.47%)
+- Manually started the server in both states (`REDIS_URL` unset;
+  `REDIS_URL` pointing at an unreachable address) — confirmed clean
+  startup with no crash in either case
+- Confirmed `/api/health/ready` correctly reports `mongo: unavailable`
+  as the 503-triggering condition while `redis: unavailable` is
+  reported without affecting overall status
+
+**Not yet done / next steps:** re-running the k6 load test against the
+live deployment with Redis + the text index active to get a real
+before/after latency comparison (documented separately once run — see
+`loadtest/RESULTS.md`). The rate limiter remains per-process/in-memory
+(documented gap from section 3) — a shared Redis-backed rate limit
+store is a natural next addition now that Redis is already wired in.
+
+---
+
 ## Summary of what changed, by file
 
 ```

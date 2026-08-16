@@ -62,19 +62,67 @@ Confirms the rate limiter engages at exactly the configured threshold
 — the previously-unprotected `/api/auth/signin` and `/signup` endpoints
 now have this same protection via `authLimiter` (20 req/15min).
 
-## Next step — full end-to-end load test (not run here)
+## Result 3 — Full end-to-end k6 run against the live Railway deployment
 
-Run this yourself once Docker is available:
+Run by the project owner (not in the sandboxed build environment —
+k6's binary is blocked there, see note above) against the actual
+deployed app at Railway, with a real MongoDB Atlas connection:
 
 ```bash
-docker compose up -d
-npm run seed   # if you add a seed script — otherwise sign up a test user and create a few posts manually first
-k6 run loadtest/k6-script.js
+k6 run -e BASE_URL=https://<railway-app-url> loadtest/k6-script.js
 ```
 
-This will exercise `getposts` (including the `$regex` search path
-flagged in the code review as a scan hotspot at scale) and the full
-Mongo-backed request lifecycle, including the new indexes added on
-`userId`, `category`, `updatedAt`, and the compound `(postId, createdAt)`
-index on comments. Compare p95 latency before/after those indexes by
-temporarily dropping them (`db.posts.dropIndexes()`) and re-running.
+Scenario: ramping virtual users, 0 -> 50 over 20s, hold 50 for 40s,
+ramp down over 10s (70s total steady-load window). Each iteration
+hits `/api/health`, `/api/post/getposts?limit=9`, and
+`/api/post/getposts?searchTerm=test` (the `$regex` search path).
+
+| Metric | Value |
+|---|---|
+| Total requests | 3,120 |
+| Total iterations | 1,040 (0 interrupted) |
+| Throughput | 43.47 req/sec |
+| Error rate | **0.00%** (0 failed requests out of 3,120) |
+| Checks passed | **100%** (4,160/4,160 — every health/getposts/search assertion) |
+| avg latency | 563.11 ms |
+| p90 latency | 800.26 ms |
+| **p95 latency** | **858.38 ms** |
+| max latency | 1.91 s |
+| Max concurrent VUs | 50 |
+
+**Threshold result: `p(95)<500ms` — FAILED** (actual: 858.38ms).
+`http_req_failed rate<1%` — passed (actual: 0.00%).
+
+### What this honestly means
+
+Reliability is excellent — every single request succeeded under 50
+concurrent users sustained for 70 seconds, zero errors, zero timeouts.
+Latency under load is higher than the 500ms target I set going in.
+Likely contributors, in rough order of impact:
+
+1. **Free-tier hosting on both ends** — Railway's free/hobby compute
+   tier and MongoDB Atlas's M0 free cluster are both intentionally
+   resource-constrained (shared CPU, low IOPS). This is expected
+   behavior for free-tier infrastructure under concurrent load, not
+   evidence of a code-level bug.
+2. **Cross-provider network latency** — Atlas and Railway are
+   different providers/regions unless deliberately co-located; every
+   request pays that round-trip on top of query time.
+3. **The `$regex` search path** — flagged earlier in the code review
+   as unable to use a standard index for unanchored substring
+   matching. Under concurrent load this is the most likely single
+   largest per-request cost among the three endpoints hit.
+4. **No caching layer** — `getposts()` hits MongoDB on every request,
+   including the same query repeated across VUs. A Redis cache in
+   front of frequently-read queries (documented as a known follow-up
+   in CHANGELOG.md) would directly reduce this.
+
+None of this contradicts the indexing work already done — those
+indexes prevent full collection scans, but they don't eliminate
+network/infra latency or the unindexable regex search cost. The
+honest takeaway: the system is **reliable** (0% errors under load)
+but not yet **fast enough** to meet an aggressive sub-500ms p95 target
+on free-tier infrastructure. Upgrading to paid tiers, co-locating
+Atlas and Railway in the same region, and adding the text-index +
+caching follow-ups already identified would be the concrete next
+steps to close that gap.
