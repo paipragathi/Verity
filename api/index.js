@@ -25,7 +25,26 @@ const __dirname = path.resolve();
 const app = express();
 
 // ── Security & parsing middleware ────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'img-src': ["'self'", 'data:', 'https:'],
+        'script-src': ["'self'", 'https://apis.google.com'],
+        'connect-src': [
+          "'self'",
+          'https://identitytoolkit.googleapis.com',
+          'https://securetoken.googleapis.com',
+        ],
+        'frame-src': [
+          "'self'",
+          'https://accounts.google.com',
+          'https://blog-mern-24541.firebaseapp.com',
+        ],
+      },
+    },
+}));
 app.use(
   cors({
     origin: config.corsOrigin,
