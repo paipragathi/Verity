@@ -6,7 +6,7 @@ const firebaseConfig = {
   projectId: 'blog-mern-24541',
   storageBucket: 'blog-mern-24541.appspot.com',
   messagingSenderId: '990910487828',
-  appId: '1:990910487828:web:4146cd785cdaf92ab87601',
+  appId: '1:990910487828:web:4146cd785cdaf92ab876601',
 };
 
 // initializeApp() throws synchronously if apiKey is missing/invalid. This
