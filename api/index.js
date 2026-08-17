@@ -36,6 +36,8 @@ app.use(helmet({
           "'self'",
           'https://identitytoolkit.googleapis.com',
           'https://securetoken.googleapis.com',
+          'https://firebasestorage.googleapis.com',
+          'https://storage.googleapis.com',
         ],
         'frame-src': [
           "'self'",
